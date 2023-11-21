@@ -6,7 +6,7 @@
   <link href="https://www.w3.org/StyleSheets/TR/2021/cg-draft" rel="stylesheet">
   <meta content="Bikeshed version 82ce88815, updated Thu Sep 7 16:33:55 2023 -0700" name="generator">
   <link href="https://WICG.github.io/local-peer-to-peer/" rel="canonical">
-  <meta content="501a38ad1d15c5fe382c231a72f4fba9e5c6b5c7" name="document-revision">
+  <meta content="b110af2bc1842093c40e9c68ecdbc1d738a3c2c8" name="document-revision">
 <style>/* Boilerplate: style-autolinks */
 .css.css, .property.property, .descriptor.descriptor {
     color: var(--a-normal-text);
@@ -411,7 +411,7 @@ dfn > a.self-link::before      { content: "#"; }
   <div class="head">
    <p data-fill-with="logo"><a class="logo" href="https://www.w3.org/"> <img alt="W3C" height="48" src="https://www.w3.org/StyleSheets/TR/2021/logos/W3C" width="72"> </a> </p>
    <h1 class="p-name no-ref" id="title">Local Peer-to-Peer API</h1>
-   <p id="w3c-state"><a href="https://www.w3.org/standards/types#CG-DRAFT">Draft Community Group Report</a>, <time class="dt-updated" datetime="2023-11-17">17 November 2023</time></p>
+   <p id="w3c-state"><a href="https://www.w3.org/standards/types#CG-DRAFT">Draft Community Group Report</a>, <time class="dt-updated" datetime="2023-11-21">21 November 2023</time></p>
    <div data-fill-with="spec-metadata">
     <dl>
      <dt>This version:
@@ -465,8 +465,14 @@ A human-readable <a href="http://www.w3.org/community/about/agreements/cla-deed/
    </ol>
   </nav>
   <main>
+   <p class="note" role="note"><span class="marker">Note:</span> This specification is under active development and therefore incomplete. If you’re looking for an overview of the proposal, please refer to the <a href="https://github.com/WICG/local-peer-to-peer/blob/main/EXPLAINER.md">Explainer</a>.</p>
    <h2 class="heading settled" data-level="1" id="intro"><span class="secno">1. </span><span class="content">Introduction</span><a class="self-link" href="#intro"></a></h2>
-   <p>*This section is non-normative.*</p>
+   <p><em>This section is non-normative.</em></p>
+   <p>The Local Peer-to-Peer API aims to give browsers the means to communicate directly, without the aid of a server in the middle. It is designed to enable this communication within the confines of a local communication medium such as the Local Area Network.</p>
+   <p>Many modern Web security measures rely on the presence of naming, signaling and certificate authorities. Local use-cases where these authorities are not readily available have started lagging behind in user experience or are not supported altogether. The Local Peer-to-Peer API aims to bring back first-class support for local communication use-cases while working within the same strict user-friendliness, security and privacy requirements.</p>
+   <p>Examples of potential uses of this API include: Collaboration tools that work during an internet outage or emergency situations, connecting to your NAS, your home security system, your robotic assistant doing the dishes or your GPU farm in the basement that’s running your personalized virtual assistant.</p>
+   <p>This specification aims to strike a balance between creating a powerful new building block for developers and providing a seamless, secure and privacy preserving experience for browser users. As an example: while the API doesn’t provide raw socket access, it does aim to give developers the flexibility to innovate on top by providing a persistent, two-way communication channel with little overhead.</p>
+   <p>The API is designed to be backed by an authenticated, streams-based transport. As a commitment to an open standards-based implementation path, this specification describes how the API can be implemented on top of the <a href="https://w3c.github.io/openscreenprotocol/">Open Screen Protocol</a>. While not described here, the API is expected to be implementable on top of other transports when technically feasible.</p>
   </main>
   <div data-fill-with="conformance">
    <h2 class="no-ref no-num heading settled" id="w3c-conformance"><span class="content">Conformance</span><a class="self-link" href="#w3c-conformance"></a></h2>
