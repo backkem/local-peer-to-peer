@@ -184,6 +184,10 @@ A [=Local Peer-to-Peer session=] has the following capabilities:
    <td>[[#data-channel-extension]]
   </tr>
   <tr>
+   <td>[=close a data channel=]
+   <td>[[#data-channel-extension]]
+  </tr>
+  <tr>
    <td>[=open a WebTransport session=]
    <td>[[#webtransport-extension]]
   </tr>
@@ -197,7 +201,11 @@ Data channel extension {#data-channel-extension}
 
 In order to signal support for this protocol extension, the agent should include the [=data-channels=] [agent-capability](https://www.w3.org/TR/openscreen-application/#appendix-a) as part of the [agent-info-response](https://www.w3.org/TR/openscreen-application/#agent-info-response) message exchanged during [=discover metadata=].
 
-To <dfn>open a data channel</dfn> an agent may send a [=data-channel-open-request=] message on a new [[!RFC9000|QUIC]] stream. The [=Local Peer-to-Peer session=] must be authenticated. The message must contain the following values:
+Each data channel uses its own bidirectional [[!RFC9000|QUIC]] stream. All messages of a data channel, in both directions, are sent on that stream, in order. This differs from other Open Screen Protocol messages, which use unidirectional streams.
+
+Note: [w3c/openscreenprotocol#370](https://github.com/w3c/openscreenprotocol/pull/370) describes message delivery as ordered message sequences, independent of QUIC. Each direction of a data channel's stream is one such sequence.
+
+To <dfn>open a data channel</dfn> an agent opens a new bidirectional [[!RFC9000|QUIC]] stream and sends a [=data-channel-open-request=] message as the first message on it. The [=Local Peer-to-Peer session=] must be authenticated. The message must contain the following values:
 
 : channel-id
 :: An ID number between 0 and 65,534 which uniquely identifies the data channel. The value 65,535 is reserved, as for {{RTCDataChannel}}; {{LP2PDataChannel/id}} is an `unsigned short` for parity with {{RTCDataChannel/id}}, but cannot take that value.
@@ -208,10 +216,18 @@ To <dfn>open a data channel</dfn> an agent may send a [=data-channel-open-reques
 : protocol
 :: a string containing the name of the subprotocol in use. If no protocol was specified when the data channel was created, then this property's value is the empty string ("").
 
-When the receiver receives the [=data-channel-open-request=], it should send back a [=data-channel-open-response=] message. The response must include the following:
+The agent that is the QUIC client of the [=Local Peer-to-Peer session=] uses even channel IDs and the agent that is the QUIC server uses odd channel IDs, so the two agents never pick the same ID. If the application does not choose an ID, the agent uses the lowest unused ID with its parity. A channel ID is in use from when the [=data-channel-open-request=] is sent or received until the channel is closed. An agent must not open a data channel with an ID that is in use or that has the other agent's parity.
+
+Note: In the API, the requesting peer is the QUIC client and therefore uses even IDs; the receiving peer uses odd IDs.
+
+When the receiver receives the [=data-channel-open-request=], it must send back a [=data-channel-open-response=] message on the same stream, as the first message it sends on that stream. The response must include the following:
 
 : result
 :: a code indicating success or failure, and the reason for the failure. The values are those of the `result` type in the [[!openscreen-application|Open Screen Application Protocol]] [Messages](https://www.w3.org/TR/openscreen-application/#appendix-a).
+
+The receiver must refuse the data channel if the channel-id is greater than 65,534, is in use, or has the receiver's own parity. To refuse a data channel, the receiver sends a [=data-channel-open-response=] with a result other than `success`, which should be `permanent-error` (102), and then closes the stream.
+
+The opening agent must wait for the [=data-channel-open-response=] before it sends any data on the stream. If the result is not `success`, the data channel fails to open and the opening agent closes the stream.
 
 If the [=data-channel-open-response=] message indicates success, the data channel is considered open. Agents can now <dfn>send data on a channel</dfn> by sending [data-frame](https://www.w3.org/TR/openscreen-application/#data-frame) messages (type key 24, as defined in the [[!openscreen-application|Open Screen Application Protocol]]) on the same [[!RFC9000|QUIC]] stream the data channel was opened. The message must include the following keys; the other keys of [data-frame](https://www.w3.org/TR/openscreen-application/#data-frame) (1, 2, 3 and 5) are unused, should not be sent, and must be ignored by the receiving agent:
 
@@ -223,6 +239,8 @@ If the [=data-channel-open-response=] message indicates success, the data channe
 
 : payload
 :: The binary representation of the data being sent.
+
+To <dfn>close a data channel</dfn>, an agent finishes sending any pending messages and then ends its sending side of the stream (a QUIC STREAM frame with the FIN bit). When an agent receives the end of the stream, it considers the data channel closing, and ends its own sending side once its pending messages are sent. The data channel is closed when both sides of the stream have ended. An agent may instead abort a data channel by resetting the stream (RESET_STREAM and STOP_SENDING); the data channel is then closed at once, and messages not yet delivered may be lost. When the [=Local Peer-to-Peer session=] is closed, all of its data channels are closed.
 
 WebTransport extension {#webtransport-extension}
 ------------------------------------------------
