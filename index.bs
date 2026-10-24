@@ -661,14 +661,23 @@ The LP2PDataChannel interface represents a bi-directional data channel between t
 Note: The LP2PDataChannel interface is purposefully kept as close as possible to the [RTCDataChannel](https://www.w3.org/TR/webrtc/#rtcdatachannel) interface defined in [[!webrtc]]. The aim is to allow seamless transition of developers that are familiar with WebRTC as well as allowing libraries to easily work with both the [[!webrtc]] and LP2P API.
 
 <pre class="idl">
+enum LP2PDataChannelState {
+  "connecting",
+  "open",
+  "closing",
+  "closed"
+};
+
 [Exposed=(Window,Worker), SecureContext]
 interface LP2PDataChannel : EventTarget {
-  constructor(USVString label,
-              optional LP2PDataChannelInit dataChannelDict = {});
   readonly attribute USVString label;
   readonly attribute USVString protocol;
   readonly attribute unsigned short? id;
+  readonly attribute LP2PDataChannelState readyState;
+  readonly attribute unsigned long long bufferedAmount;
+  attribute unsigned long long bufferedAmountLowThreshold;
   attribute EventHandler onopen;
+  attribute EventHandler onbufferedamountlow;
   attribute EventHandler onerror;
   attribute EventHandler onclosing;
   attribute EventHandler onclose;
@@ -678,6 +687,122 @@ interface LP2PDataChannel : EventTarget {
   undefined send((USVString or Blob or ArrayBuffer or ArrayBufferView) data);
 };
 </pre>
+
+The {{LP2PDataChannelState}} values have the same meaning as those of {{RTCDataChannelState}}: "{{LP2PDataChannelState/connecting}}" while the channel is being opened, "{{LP2PDataChannelState/open}}" once it can be used, "{{LP2PDataChannelState/closing}}" while it is being closed, and "{{LP2PDataChannelState/closed}}" once it is closed.
+
+Each {{LP2PDataChannel}} has an <dfn for="LP2PDataChannel">underlying data channel</dfn>, a data channel of a [=Local Peer-to-Peer session=] as described in [[#data-channel-extension]], and the following internal slots:
+
+- <dfn attribute for="LP2PDataChannel">\[[Label]]</dfn>, <dfn attribute for="LP2PDataChannel">\[[Protocol]]</dfn> and <dfn attribute for="LP2PDataChannel">\[[Id]]</dfn>, the label, protocol and channel ID of the [=LP2PDataChannel/underlying data channel=];
+- <dfn attribute for="LP2PDataChannel">\[[ReadyState]]</dfn>, an {{LP2PDataChannelState}}, initially "{{LP2PDataChannelState/connecting}}";
+- <dfn attribute for="LP2PDataChannel">\[[BufferedAmount]]</dfn>, a number, initially 0;
+- <dfn attribute for="LP2PDataChannel">\[[BufferedAmountLowThreshold]]</dfn>, a number, initially 0;
+- <dfn attribute for="LP2PDataChannel">\[[BinaryType]]</dfn>, a {{BinaryType}}, initially "{{BinaryType/arraybuffer}}".
+
+The <dfn attribute for="LP2PDataChannel">label</dfn>, <dfn attribute for="LP2PDataChannel">protocol</dfn>, <dfn attribute for="LP2PDataChannel">id</dfn>, <dfn attribute for="LP2PDataChannel">readyState</dfn> and <dfn attribute for="LP2PDataChannel">bufferedAmount</dfn> getter steps are to return [=this=].{{LP2PDataChannel/[[Label]]}}, [=this=].{{LP2PDataChannel/[[Protocol]]}}, [=this=].{{LP2PDataChannel/[[Id]]}}, [=this=].{{LP2PDataChannel/[[ReadyState]]}} and [=this=].{{LP2PDataChannel/[[BufferedAmount]]}}, respectively.
+
+The {{LP2PDataChannel/bufferedAmount}} attribute is the number of bytes of application data (text and binary data, without framing) that have been queued with {{LP2PDataChannel/send()}} but have not yet been sent on the [=LP2PDataChannel/underlying data channel=]. It does not reset to zero when the channel closes.
+
+The <dfn attribute for="LP2PDataChannel">bufferedAmountLowThreshold</dfn> getter steps are to return [=this=].{{LP2PDataChannel/[[BufferedAmountLowThreshold]]}}, and its setter steps are to set [=this=].{{LP2PDataChannel/[[BufferedAmountLowThreshold]]}} to [=the given value=].
+
+The <dfn attribute for="LP2PDataChannel">binaryType</dfn> getter steps are to return [=this=].{{LP2PDataChannel/[[BinaryType]]}}, and its setter steps are to set [=this=].{{LP2PDataChannel/[[BinaryType]]}} to [=the given value=]. It controls how binary messages are exposed: with "{{BinaryType/blob}}" they are delivered as {{Blob}} objects, with "{{BinaryType/arraybuffer}}" as {{ArrayBuffer}} objects. The receiver's {{LP2PDataChannel/binaryType}} alone decides this: whether the sender passed a {{Blob}} ([=encoding-id-blob=]) or an {{ArrayBuffer}} ([=encoding-id-array-buffer=]) to {{LP2PDataChannel/send()}} makes no difference.
+
+Note: The default of "{{BinaryType/arraybuffer}}" matches {{RTCDataChannel/binaryType}}, not {{WebSocket/binaryType}}.
+
+<div algorithm>
+To <dfn>create an LP2PDataChannel</dfn> given an {{LP2PConnection}} |connection|, a string |label|, a string |protocol| and a channel ID |id|:
+
+1. Let |channel| be a [=new=] {{LP2PDataChannel}} in |connection|'s [=relevant realm=].
+1. Set |channel|.{{LP2PDataChannel/[[Label]]}} to |label|, |channel|.{{LP2PDataChannel/[[Protocol]]}} to |protocol| and |channel|.{{LP2PDataChannel/[[Id]]}} to |id|.
+1. Let |channel|'s [=LP2PDataChannel/underlying data channel=] be the data channel with channel ID |id| of |connection|.{{LP2PConnection/[[Session]]}}.
+1. Return |channel|.
+
+</div>
+
+<div algorithm>
+To <dfn>announce an LP2PDataChannel as open</dfn> given |channel|, [=queue a global task=] on the [=networking task source=] given |channel|'s [=relevant global object=] to run these steps:
+
+1. If |channel|.{{LP2PDataChannel/[[ReadyState]]}} is not "{{LP2PDataChannelState/connecting}}", abort these steps.
+1. Set |channel|.{{LP2PDataChannel/[[ReadyState]]}} to "{{LP2PDataChannelState/open}}".
+1. [=Fire an event=] named {{LP2PDataChannel/open}} at |channel|.
+
+</div>
+
+<div algorithm>
+To <dfn>announce an LP2PDataChannel as closing</dfn> given |channel|, [=queue a global task=] on the [=networking task source=] given |channel|'s [=relevant global object=] to run these steps:
+
+1. If |channel|.{{LP2PDataChannel/[[ReadyState]]}} is "{{LP2PDataChannelState/closing}}" or "{{LP2PDataChannelState/closed}}", abort these steps.
+1. Set |channel|.{{LP2PDataChannel/[[ReadyState]]}} to "{{LP2PDataChannelState/closing}}".
+1. [=Fire an event=] named {{LP2PDataChannel/closing}} at |channel|.
+
+</div>
+
+<div algorithm>
+To <dfn>announce an LP2PDataChannel as closed</dfn> given |channel|, [=queue a global task=] on the [=networking task source=] given |channel|'s [=relevant global object=] to run these steps:
+
+1. If |channel|.{{LP2PDataChannel/[[ReadyState]]}} is "{{LP2PDataChannelState/closed}}", abort these steps.
+1. Set |channel|.{{LP2PDataChannel/[[ReadyState]]}} to "{{LP2PDataChannelState/closed}}".
+1. [=Fire an event=] named {{LP2PDataChannel/close}} at |channel|.
+
+</div>
+
+<div algorithm="LP2PDataChannel underlying data channel events">
+For an {{LP2PDataChannel}} |channel|, the user agent must run the following steps as the state of its [=LP2PDataChannel/underlying data channel=] changes, as described in [[#data-channel-extension]]:
+
+- When the [=data-channel-open-response=] for a channel opened by {{LP2PConnection/createDataChannel()}} indicates success, [=announce an LP2PDataChannel as open=] given |channel|.
+- When the [=data-channel-open-response=] indicates failure, or the channel is aborted before it is open, [=queue a global task=] on the [=networking task source=] given |channel|'s [=relevant global object=] to [=fire an event=] named {{LP2PDataChannel/error}} at |channel|, and then [=announce an LP2PDataChannel as closed=] given |channel|.
+- When the peer ends its sending side of the channel's stream, [=announce an LP2PDataChannel as closing=] given |channel|.
+- When the [=LP2PDataChannel/underlying data channel=] is closed, for whatever reason, [=announce an LP2PDataChannel as closed=] given |channel|.
+
+</div>
+
+The {{LP2PDataChannel/closing}} event is thus only fired when the peer closed the channel, as for {{RTCDataChannel}}; {{LP2PDataChannel/close()}} sets {{LP2PDataChannel/readyState}} to "{{LP2PDataChannelState/closing}}" without firing it.
+
+<div algorithm>
+The <dfn method for="LP2PDataChannel">send(|data|)</dfn> method steps are:
+
+1. If [=this=].{{LP2PDataChannel/[[ReadyState]]}} is not "{{LP2PDataChannelState/open}}", [=exception/throw=] an "{{InvalidStateError}}" {{DOMException}}.
+1. Let |encoding| and |payload| be determined as follows:
+    : |data| is a string
+    :: Let |encoding| be [=encoding-id-string=] and |payload| be the result of [=UTF-8 encoding=] |data|.
+    : |data| is an {{ArrayBuffer}} or {{ArrayBufferView}}
+    :: Let |encoding| be [=encoding-id-array-buffer=] and |payload| be [=get a copy of the buffer source|a copy of the bytes held by=] |data|.
+    : |data| is a {{Blob}}
+    :: Let |encoding| be [=encoding-id-blob=] and |payload| be the raw data represented by |data|. The data is read asynchronously; messages queued after it are not sent before it.
+1. Increase [=this=].{{LP2PDataChannel/[[BufferedAmount]]}} by |payload|'s [=byte sequence/length=].
+1. Run these steps [=in parallel=]:
+    1. [=Send data on a channel|Send=] |payload| with encoding-id |encoding| on [=this=]'s [=LP2PDataChannel/underlying data channel=], after any messages queued earlier.
+    1. Once |payload| has been sent, [=queue a global task=] on the [=networking task source=] given [=this=]'s [=relevant global object=] to run these steps:
+        1. Let |previous| be [=this=].{{LP2PDataChannel/[[BufferedAmount]]}}.
+        1. Decrease [=this=].{{LP2PDataChannel/[[BufferedAmount]]}} by |payload|'s [=byte sequence/length=].
+        1. If |previous| is greater than [=this=].{{LP2PDataChannel/[[BufferedAmountLowThreshold]]}} and [=this=].{{LP2PDataChannel/[[BufferedAmount]]}} is less than or equal to it, [=fire an event=] named {{LP2PDataChannel/bufferedamountlow}} at [=this=].
+
+</div>
+
+<div algorithm>
+The <dfn method for="LP2PDataChannel">close()</dfn> method steps are:
+
+1. If [=this=].{{LP2PDataChannel/[[ReadyState]]}} is "{{LP2PDataChannelState/closing}}" or "{{LP2PDataChannelState/closed}}", return.
+1. Set [=this=].{{LP2PDataChannel/[[ReadyState]]}} to "{{LP2PDataChannelState/closing}}".
+1. [=Close a data channel|Close=] [=this=]'s [=LP2PDataChannel/underlying data channel=] [=in parallel=]. Messages queued with {{LP2PDataChannel/send()}} are sent first.
+
+</div>
+
+Once the [=LP2PDataChannel/underlying data channel=] is closed, the user agent [=announce an LP2PDataChannel as closed|announces the channel as closed=], as described above.
+
+<div algorithm="LP2PDataChannel receive a message">
+When a [data-frame](https://www.w3.org/TR/openscreen-application/#data-frame) message with encoding-id |encoding| and payload |payload| is received on the [=LP2PDataChannel/underlying data channel=] of an {{LP2PDataChannel}} |channel|, the user agent must [=queue a global task=] on the [=networking task source=] given |channel|'s [=relevant global object=] to run these steps:
+
+1. If |channel|.{{LP2PDataChannel/[[ReadyState]]}} is not "{{LP2PDataChannelState/open}}", abort these steps.
+1. Let |data| be determined as follows:
+    : |encoding| is [=encoding-id-string=]
+    :: Let |data| be the result of [=UTF-8 decode without BOM|UTF-8 decoding=] |payload|.
+    : |channel|.{{LP2PDataChannel/[[BinaryType]]}} is "{{BinaryType/blob}}"
+    :: Let |data| be a new {{Blob}} object, created in the [=relevant realm=] of |channel|, that represents |payload| as its raw data.
+    : Otherwise
+    :: Let |data| be the result of [=ArrayBuffer/create|creating an ArrayBuffer=] from |payload| in the [=relevant realm=] of |channel|.
+1. [=Fire an event=] named {{LP2PDataChannel/message}} at |channel| using {{MessageEvent}} with its {{MessageEvent/data}} attribute initialized to |data|.
+
+</div>
 
 LP2PDataChannelInit {#lp2p-data-channel-init}
 ----------------------------------------------
@@ -707,6 +832,11 @@ The following event is [=fire an event|fired=] at the {{LP2PDataChannel}} object
       <td><dfn event for="LP2PDataChannel"><code>open</code></dfn></td>
       <td>{{Event}}</td>
       <td>The data channel is opened.</td>
+    </tr>
+    <tr>
+      <td><dfn event for="LP2PDataChannel"><code>bufferedamountlow</code></dfn></td>
+      <td>{{Event}}</td>
+      <td>{{LP2PDataChannel/bufferedAmount}} decreased from above {{LP2PDataChannel/bufferedAmountLowThreshold}} to at or below it.</td>
     </tr>
     <tr>
       <td><dfn event for="LP2PDataChannel"><code>message</code></dfn></td>
@@ -749,6 +879,10 @@ The following are the <a>event handlers</a> (and their corresponding <a>event ha
       <td>{{LP2PDataChannel/open}}</td>
     </tr>
     <tr>
+      <td><dfn attribute for="LP2PDataChannel"><code>onbufferedamountlow</code></dfn></td>
+      <td>{{LP2PDataChannel/bufferedamountlow}}</td>
+    </tr>
+    <tr>
       <td><dfn attribute for="LP2PDataChannel"><code>onmessage</code></dfn></td>
       <td>{{LP2PDataChannel/message}}</td>
     </tr>
@@ -777,6 +911,36 @@ partial interface LP2PConnection {
   attribute EventHandler ondatachannel;
 };
 </pre>
+
+<div algorithm>
+The <dfn method for="LP2PConnection">createDataChannel(|label|, |dataChannelDict|)</dfn> method steps are:
+
+1. If [=this=].{{LP2PConnection/[[Closed]]}} is true, [=exception/throw=] an "{{InvalidStateError}}" {{DOMException}}.
+1. Let |session| be [=this=].{{LP2PConnection/[[Session]]}}.
+1. Let |id| be |dataChannelDict|["{{LP2PDataChannelInit/id}}"] if it [=map/exists=], or null otherwise.
+1. If |id| is 65535, [=exception/throw=] a {{TypeError}}.
+1. If |id| is not null and is in use on |session|, or has the parity of the other agent, as described in [[#data-channel-extension]], [=exception/throw=] an "{{OperationError}}" {{DOMException}}.
+1. If |id| is null, set |id| to the lowest channel ID with this agent's parity that is not in use on |session|. If there is no such ID, [=exception/throw=] an "{{OperationError}}" {{DOMException}}.
+1. Let |channel| be the result of [=creating an LP2PDataChannel=] given [=this=], |label|, |dataChannelDict|["{{LP2PDataChannelInit/protocol}}"] and |id|.
+1. [=Open a data channel=] on |session| with channel ID |id|, label |label| and protocol |dataChannelDict|["{{LP2PDataChannelInit/protocol}}"], [=in parallel=]. |id| is in use from this point.
+1. Return |channel|.
+
+</div>
+
+The channel is [=announce an LP2PDataChannel as open|announced as open=] once the peer accepts it, or [=announce an LP2PDataChannel as closed|announced as closed=], after an {{LP2PDataChannel/error}} event, if the peer refuses it.
+
+<div algorithm="LP2PConnection incoming data channel">
+When the user agent receives a [=data-channel-open-request=] on the {{LP2PConnection/[[Session]]}} of an {{LP2PConnection}} |connection| and accepts it, as described in [[#data-channel-extension]], it must [=queue a global task=] on the [=networking task source=] given |connection|'s [=relevant global object=] to run these steps:
+
+1. If |connection|.{{LP2PConnection/[[Closed]]}} is true, abort these steps.
+1. Let |channel| be the result of [=creating an LP2PDataChannel=] given |connection| and the label, protocol and channel-id of the request.
+1. Set |channel|.{{LP2PDataChannel/[[ReadyState]]}} to "{{LP2PDataChannelState/open}}".
+1. [=Fire an event=] named {{LP2PConnection/datachannel}} at |connection| using {{LP2PDataChannelEvent}} with its {{LP2PDataChannelEvent/channel}} attribute initialized to |channel|.
+1. [=Fire an event=] named {{LP2PDataChannel/open}} at |channel|.
+
+</div>
+
+Note: An incoming channel is already open when the {{LP2PConnection/datachannel}} event is fired, so that it can be used from the event handler; the {{LP2PDataChannel/open}} event is fired as well, as for {{RTCDataChannel}}.
 
 LP2PDataChannelEvent {#lp2p-data-channel-event}
 ------------------------------------------------
