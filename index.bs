@@ -51,15 +51,7 @@ Permission Policy Integration {#permission-policy-integration}
 
 The Local Peer-to-Peer API defines a [=policy-controlled feature=] identified by the token "local-peer-to-peer". Its [=default allowlist=] is `"self"`.
 
-Workers (dedicated and shared) adhere to the permission policy set by their owning document(s):
-<ul>
-  <li>
-    Dedicated workers can be created from other workers, in which case the permission policy of the first owning document (in case of a dedicated worker) or owning documents (in case of a shared worker) up the owner chain will be used.
-  </li>
-  <li>
-    Shared workers often have multiple owning documents as they can be obtained by other documents with the [=same origin=]. In this case, all owning documents must be [=allowed to use=] the [=policy-controlled feature=] defined by this specification.
-  </li>
-</ul>
+Dedicated workers adhere to the permission policy set by their owning document. Dedicated workers can be created from other workers, in which case the permission policy of the first owning document up the owner chain will be used.
 
 Note: There has been discussion on allowing setting permission policy directly on a worker on creation, in which case that would have to be consulted as well.
  
@@ -87,6 +79,10 @@ The user agent is in charge of managing peers.
 A <dfn>peer</dfn> is an equal participant in the [=local communication=]. These nodes can communicate without the need for a central coordination by a server.
 
 A user agent has an associated <dfn>local peer-to-peer manager</dfn> in charge of managing [=peers=]. Its responsibility is to [=start local peer discovery=], [=establish local peer connections=] and [=acquire a local peer grant=] on a per-origin basis. This is done to avoid exposing information about the [=communication medium topology=].
+
+Some steps below need user interface: consent to advertise, the peer picker, the grant prompt and the PIN entry of [=authenticate a local peer=]. If such a step is reached for an {{LP2PReceiver}} or {{LP2PRequest}} whose [=relevant global object=] is not a {{Window}}, the user agent must not show the user interface and the step fails: a pending `start()` promise is rejected with a "{{NotAllowedError}}" {{DOMException}}, and an incoming connection that needs a grant is refused. Requests that need no user interface, for example because the grant is [=persisted=], proceed as in a {{Window}}.
+
+Note: "{{NotAllowedError}}" is the same error a page gets when the user declines, so a worker cannot learn anything a page could not. The API is exposed in dedicated workers, which have a single owning document, so that already-granted use works there today, and so that worker support for these prompts can be added later without changing the API shape.
 
 Known peers {#known-peers}
 --------------------------
@@ -275,7 +271,7 @@ LP2PReceiver Interface {#lp2p-receiver}
 The <dfn interface>LP2PReceiver</dfn> interface allows advertising on the [=local communication medium=], enabling other peers to discover and connect.
 
 <pre class="idl">
-[Exposed=(Window,Worker), SecureContext]
+[Exposed=(Window,DedicatedWorker), SecureContext]
 interface LP2PReceiver : EventTarget {
   constructor(optional LP2PReceiverOptions options = {});
   attribute EventHandler onconnection;
@@ -360,7 +356,7 @@ LP2PConnectionEvent {#lp2p-receiver-connection-event}
 Issue: In general, when defining a new interface that inherits from Event please always ask feedback from the WHATWG or the W3C WebApps WG community. See [defining event interfaces](https://dom.spec.whatwg.org/#defining-event-interfaces).
 
 <pre class="idl">
-[Exposed=(Window,Worker), SecureContext]
+[Exposed=(Window,DedicatedWorker), SecureContext]
 interface LP2PConnectionEvent : Event {
     constructor(DOMString type, LP2PConnectionEventInit connectionEventInitDict);
     readonly attribute LP2PConnection connection;
@@ -441,7 +437,7 @@ The LP2PRequest Interface {#lp2p-request}
 The <dfn interface>LP2PRequest</dfn> interface represents a request for a connection to another local peer.
 
 <pre class="idl">
-[Exposed=(Window,Worker), SecureContext]
+[Exposed=(Window,DedicatedWorker), SecureContext]
 interface LP2PRequest {
     constructor(optional LP2PRequestOptions options = {});
     Promise&lt;LP2PConnection&gt; start();
@@ -517,7 +513,7 @@ The LP2PConnection Interface {#lp2p-connection}
 The <dfn interface>LP2PConnection</dfn> interface represents a connection with another local peer.
 
 <pre class="idl">
-[Exposed=(Window,Worker), SecureContext]
+[Exposed=(Window,DedicatedWorker), SecureContext]
 interface LP2PConnection : EventTarget {
   undefined close();
   attribute EventHandler onclose;
@@ -604,7 +600,7 @@ LP2PQuicTransport Interface Extensions {#lp2p-connection-quic-transport-extensio
 This {{LP2PQuicTransport}} extension allows opening a QuicTransport using an existing connection. In this case, the already established permission and grants should be used.
 
 <pre class="idl">
-[Exposed=(Window,Worker), SecureContext]
+[Exposed=(Window,DedicatedWorker), SecureContext]
 partial interface LP2PQuicTransport {
   constructor(LP2PConnection connection,
               optional LP2PQuicTransportInit quicTransportDict = {});
@@ -668,7 +664,7 @@ enum LP2PDataChannelState {
   "closed"
 };
 
-[Exposed=(Window,Worker), SecureContext]
+[Exposed=(Window,DedicatedWorker), SecureContext]
 interface LP2PDataChannel : EventTarget {
   readonly attribute USVString label;
   readonly attribute USVString protocol;
@@ -904,7 +900,7 @@ LP2PConnection Interface Extensions {#lp2p-connection-data-channel-extensions}
 -------------------------------------------------------------------
 
 <pre class="idl">
-[Exposed=(Window,Worker), SecureContext]
+[Exposed=(Window,DedicatedWorker), SecureContext]
 partial interface LP2PConnection {
   LP2PDataChannel createDataChannel(USVString label,
                                     optional LP2PDataChannelInit dataChannelDict = {});
@@ -948,7 +944,7 @@ LP2PDataChannelEvent {#lp2p-data-channel-event}
 Issue: In general, when defining a new interface that inherits from Event please always ask feedback from the WHATWG or the W3C WebApps WG community. See [defining event interfaces](https://dom.spec.whatwg.org/#defining-event-interfaces).
 
 <pre class="idl">
-[Exposed=(Window,Worker), SecureContext]
+[Exposed=(Window,DedicatedWorker), SecureContext]
 interface LP2PDataChannelEvent : Event {
   constructor(DOMString type, LP2PDataChannelEventInit dataChannelEventInitDict);
   readonly attribute LP2PDataChannel channel;
@@ -1062,7 +1058,7 @@ The LP2PQuicTransport Interface {#lp2p-quic-transport}
 The <dfn interface>LP2PQuicTransport</dfn> Interface allows opening a [[!webtransport]] between peers. If the LP2PRequest or LP2PReceiver is not yet started, it must be started when the LP2PQuicTransport is constructed.
 
 <pre class="idl">
-[Exposed=(Window,Worker), SecureContext]
+[Exposed=(Window,DedicatedWorker), SecureContext]
 interface LP2PQuicTransport : WebTransport {
   constructor((LP2PRequest or LP2PReceiver) source,
               optional LP2PQuicTransportInit quicTransportDict = {});
@@ -1080,7 +1076,7 @@ LP2PQuicTransportListener Interface {#lp2p-quic-transport-listener}
 The <dfn interface>LP2PQuicTransportListener</dfn> Interface allows listening for incoming {{LP2PQuicTransport}} transports. If the LP2PRequest or LP2PReceiver is not yet started, it must be started when the LP2PQuicTransportListener is constructed.
 
 <pre class="idl">
-[Exposed=(Window,Worker), SecureContext]
+[Exposed=(Window,DedicatedWorker), SecureContext]
 interface LP2PQuicTransportListener {
   constructor((LP2PRequest or LP2PReceiver) source,
               optional LP2PQuicTransportListenerInit quicTransportListenerDict = {});
@@ -1150,6 +1146,8 @@ User interface guidelines {#security-ui}
 
 When the user is asked to grant permission to connect to a peer, the user agent should make it clear what origin the request is coming from.
 
+The nickname of an {{LP2PReceiver}} or {{LP2PRequest}} is chosen by the page and can be anything, for example "Living room TV". To prevent phishing, the peer picker and prompts should show it next to the requesting origin and the peer's verified display name from [[!openscreen-network|Open Screen Network Protocol]] authentication, and must not present the nickname as the identity of the device.
+
 Issue(WICG/local-peer-to-peer#15): Define peer filtering to give the user additional context.
 
 Impact on same-origin policy {#security-same-origin}
@@ -1163,6 +1161,28 @@ Device Access {#security-device-access}
 ---------------------------------------
 
 The Local Peer-to-Peer API requires user permission for a page to access any peers. The API uses purpose-fit protocols for data communication. It cannot be used to connect to raw sockets or unknowing HTTP servers. In addition, a user must [=acquire a local peer grant=] by explicitly providing consenting for an origin to connect to a peer. In addition, a user must [=authenticate a local peer=] before use.
+
+Trust model {#security-trust-model}
+-----------------------------------
+
+Authentication assumes physical presence: the user can see both devices while pairing and copies the PIN or QR code from one to the other, as with Bluetooth pairing or casting. Authentication is device-level ([=authentication state=]); access is origin-level ([=peer grant state=]).
+
+Anything a peer reports about itself, such as its display name or, in the future, the origin of the remote page, is asserted by the peer's user agent. It is trusted because the user authenticated that device. Between two honest user agents this information is accurate, because page script cannot forge it, just as it cannot forge the `Origin` header of a fetch. A malicious device that the user authenticated can lie, but it already receives whatever the user sends to it; this is the same trust the Presentation API places in a receiver. What protects the user there is authentication, consent and a picker that shows the device's identity.
+
+Threat model {#security-threat-model}
+-------------------------------------
+
+: Protocol tunnelling
+:: Pages cannot address hosts, ports or protocols. The user agent only connects to peers that speak the [[!openscreen-network|Open Screen Network Protocol]] with this extension and that the user authenticated and granted. Unlike UPnP-style APIs, the API cannot reach unaware local services. A cooperating peer can carry any protocol over a data channel, as a server can over WebSockets.
+: Fingerprinting and profiling through discovery
+:: Discovery results are never exposed to pages; a page only learns about peers the user picks. The advertisement itself is visible to every device on the [=local communication medium=] and includes a long-lived fingerprint and display name, which allows tracking portable devices. User agents should therefore only advertise between {{LP2PReceiver/start()}} and {{LP2PReceiver/stop()}} of an {{LP2PReceiver}}. Rotating or hiding advertised identifiers needs changes to the [[!openscreen-network|Open Screen Network Protocol]].
+: Abuse by people close to the user
+:: A household member or coworker may try to pair a device or get a grant without the user noticing. Mitigations: every pairing needs the PIN shown on the other device, prompts name the origin and the verified device name, grants and pairings can be reviewed and revoked, and an incoming connection is never handed to a page without a grant.
+
+Relationship to Local Network Access {#security-lna}
+----------------------------------------------------
+
+[[LOCAL-NETWORK-ACCESS]] restricts requests from pages to local network addresses. This API does not give pages addresses or sockets: the user agent connects to authenticated peers on the page's behalf after user consent. It therefore does not bypass [[LOCAL-NETWORK-ACCESS]] and cannot be used to reach local HTTP servers.
 
 Persistent State {#security-persistent-state}
 ---------------------------------------------
