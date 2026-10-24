@@ -17,6 +17,7 @@ Markup Shorthands: markdown yes, dfn yes, idl yes, markup yes
 
 <pre class="link-defaults">
 spec:html; type:dfn; text:allowed to use
+spec:html; type:dfn; for:/; text:global object
 </pre>
 
 Note: This specification is under active development and therefore incomplete. If you're looking for an overview of the proposal, please refer to the [Explainer](https://github.com/WICG/local-peer-to-peer/blob/main/EXPLAINER.md).
@@ -279,8 +280,70 @@ interface LP2PReceiver : EventTarget {
   constructor(optional LP2PReceiverOptions options = {});
   attribute EventHandler onconnection;
   Promise&lt;undefined&gt; start();
+  undefined stop();
 };
 </pre>
+
+Each {{LP2PReceiver}} has a <dfn attribute for="LP2PReceiver">\[[StartPromise]]</dfn>, a {{Promise}} or null, initially null, and a <dfn attribute for="LP2PReceiver">\[[State]]</dfn>, one of "`initial`", "`advertising`" or "`stopped`", initially "`initial`".
+
+An {{LP2PReceiver}} is used once: after {{LP2PReceiver/stop()}} it cannot be started again.
+
+<div algorithm="LP2PReceiver constructor">
+The <dfn constructor for="LP2PReceiver">constructor(|options|)</dfn> steps are:
+
+1. Set [=this=]'s <dfn for="LP2PReceiver">nickname</dfn> to |options|["{{LP2PReceiverOptions/nickname}}"] if it [=map/exists=], or the empty string otherwise.
+
+</div>
+
+<div algorithm>
+The <dfn method for="LP2PReceiver">start()</dfn> method steps are:
+
+1. If [=this=].{{LP2PReceiver/[[StartPromise]]}} is not null, return it.
+1. If [=this=].{{LP2PReceiver/[[State]]}} is "`stopped`", return [=a promise rejected with=] an "{{InvalidStateError}}" {{DOMException}}.
+1. If [=this=]'s [=relevant global object=] is not permitted to use the "local-peer-to-peer" [=policy-controlled feature=], as described in [[#permission-policy-integration]], return [=a promise rejected with=] a "{{NotAllowedError}}" {{DOMException}}.
+1. Let |promise| be [=a new promise=].
+1. Set [=this=].{{LP2PReceiver/[[StartPromise]]}} to |promise|.
+1. Let |global| be [=this=]'s [=relevant global object=].
+1. Run these steps [=in parallel=]:
+    1. Ask the user for permission to advertise [=this=]'s [=LP2PReceiver/nickname=] on the [=local communication medium=] on behalf of |global|'s [=relevant settings object=]'s [=environment settings object/origin=], as described in [[#peer-advertisement]].
+    1. If the user did not grant permission, or the user agent does not allow advertising, [=queue a global task=] on the [=networking task source=] given |global| to set [=this=].{{LP2PReceiver/[[StartPromise]]}} to null and [=reject=] |promise| with a "{{NotAllowedError}}" {{DOMException}}, and abort these steps.
+    1. If [=this=].{{LP2PReceiver/[[State]]}} is "`stopped`", abort these steps.
+    1. Start advertising using the [=session/advertise agent=] capability.
+    1. [=Queue a global task=] on the [=networking task source=] given |global| to run these steps:
+        1. If [=this=].{{LP2PReceiver/[[State]]}} is "`stopped`", abort these steps.
+        1. Set [=this=].{{LP2PReceiver/[[State]]}} to "`advertising`".
+        1. [=Resolve=] |promise| with undefined.
+1. Return |promise|.
+
+</div>
+
+Note: Whether the user declined to advertise or dismissed the user interface, the user agent takes the same steps, so that script cannot tell the two apart. See [[#peer-grant]].
+
+<div algorithm>
+The <dfn method for="LP2PReceiver">stop()</dfn> method steps are:
+
+1. If [=this=].{{LP2PReceiver/[[State]]}} is "`stopped`", return.
+1. Set [=this=].{{LP2PReceiver/[[State]]}} to "`stopped`".
+1. If [=this=].{{LP2PReceiver/[[StartPromise]]}} is not null and is still pending, [=reject=] it with an "{{AbortError}}" {{DOMException}}.
+1. Stop advertising, if advertising was started.
+
+</div>
+
+Stopping does not affect the {{LP2PConnection}} objects that were already received; their [=Local Peer-to-Peer sessions=] stay open until closed.
+
+<div algorithm="LP2PReceiver incoming session">
+While an {{LP2PReceiver}} |receiver| is advertising, when a peer establishes a [=Local Peer-to-Peer session=] |session| with the user agent, the user agent must run these steps:
+
+1. Let |global| be |receiver|'s [=relevant global object=].
+1. Let |origin| be |global|'s [=relevant settings object=]'s [=environment settings object/origin=].
+1. Add the peer to the [=known peers map=], and obtain the user's consent to grant the peer access to |origin|, as described in [[#peer-advertisement]] and [[#peer-grant]]. If the peer is not [=authenticated=], this includes running the [=authenticate a local peer=] steps.
+1. If the peer's [=peer grant state=] for |origin| is false, close |session| and abort these steps.
+1. [=Queue a global task=] on the [=networking task source=] given |global| to run these steps:
+    1. If |receiver|.{{LP2PReceiver/[[State]]}} is not "`advertising`", close |session| and abort these steps.
+    1. Let |connection| be the result of [=creating an LP2PConnection=] given |session| and |global|.
+    1. [=Fire an event=] named {{LP2PReceiver/connection}} at |receiver| using {{LP2PConnectionEvent}} with its {{LP2PConnectionEvent/connection}} attribute initialized to |connection|.
+
+</div>
 
 LP2PReceiverOptions {#lp2p-receiver-options}
 ---------------------------------
@@ -385,6 +448,41 @@ interface LP2PRequest {
 };
 </pre>
 
+Each {{LP2PRequest}} has a <dfn attribute for="LP2PRequest">\[[StartPromise]]</dfn>, a {{Promise}} or null, initially null.
+
+<div algorithm="LP2PRequest constructor">
+The <dfn constructor for="LP2PRequest">constructor(|options|)</dfn> steps are:
+
+1. Set [=this=]'s <dfn for="LP2PRequest">nickname</dfn> to |options|["{{LP2PRequestOptions/nickname}}"] if it [=map/exists=], or the empty string otherwise.
+
+</div>
+
+<div algorithm>
+The <dfn method for="LP2PRequest">start()</dfn> method steps are:
+
+1. If [=this=].{{LP2PRequest/[[StartPromise]]}} is not null, return it.
+1. If [=this=]'s [=relevant global object=] is not permitted to use the "local-peer-to-peer" [=policy-controlled feature=], as described in [[#permission-policy-integration]], return [=a promise rejected with=] a "{{NotAllowedError}}" {{DOMException}}.
+1. Let |promise| be [=a new promise=].
+1. Set [=this=].{{LP2PRequest/[[StartPromise]]}} to |promise|.
+1. Let |global| be [=this=]'s [=relevant global object=].
+1. Let |origin| be |global|'s [=relevant settings object=]'s [=environment settings object/origin=].
+1. Run these steps [=in parallel=]:
+    1. [=Start local peer discovery=].
+    1. [=Acquire a local peer grant=] for |origin|, presenting [=this=]'s [=LP2PRequest/nickname=] to the user. Let |peer| be the [=known peer=] the user selected, or null if the user did not select a peer, declined, or dismissed the user interface.
+    1. If |peer| is null, or |peer|'s [=peer grant state=] for |origin| is false, [=queue a global task=] on the [=networking task source=] given |global| to set [=this=].{{LP2PRequest/[[StartPromise]]}} to null and [=reject=] |promise| with a "{{NotAllowedError}}" {{DOMException}}, and abort these steps.
+    1. [=Establish local peer connection=] with |peer|, and let |session| be the resulting [=Local Peer-to-Peer session=].
+    1. If establishing the connection failed, [=queue a global task=] on the [=networking task source=] given |global| to set [=this=].{{LP2PRequest/[[StartPromise]]}} to null and [=reject=] |promise| with a "{{NetworkError}}" {{DOMException}}, and abort these steps.
+    1. [=Queue a global task=] on the [=networking task source=] given |global| to run these steps:
+        1. Let |connection| be the result of [=creating an LP2PConnection=] given |session| and |global|.
+        1. [=Resolve=] |promise| with |connection|.
+1. Return |promise|.
+
+</div>
+
+Calling {{LP2PRequest/start()}} again while the request is pending, or after it succeeded, returns the same promise. After a rejection, {{LP2PRequest/start()}} can be called again to start over.
+
+Note: Whether the user declined, dismissed the user interface, or selected a peer that could not be [=authenticated=], the user agent takes the same steps, so that script cannot tell these apart. See [[#peer-grant]].
+
 LP2PRequestOptions {#lp2p-request-options}
 ---------------------------------
 
@@ -421,8 +519,84 @@ The <dfn interface>LP2PConnection</dfn> interface represents a connection with a
 <pre class="idl">
 [Exposed=(Window,Worker), SecureContext]
 interface LP2PConnection : EventTarget {
+  undefined close();
+  attribute EventHandler onclose;
 };
 </pre>
+
+Each {{LP2PConnection}} has a <dfn attribute for="LP2PConnection">\[[Session]]</dfn>, a [=Local Peer-to-Peer session=], and a <dfn attribute for="LP2PConnection">\[[Closed]]</dfn>, a boolean, initially false.
+
+<div algorithm>
+To <dfn>create an LP2PConnection</dfn> given a [=Local Peer-to-Peer session=] |session| and a [=global object=] |global|:
+
+1. Let |connection| be a [=new=] {{LP2PConnection}} in |global|'s [=relevant realm=].
+1. Set |connection|.{{LP2PConnection/[[Session]]}} to |session|.
+1. Return |connection|.
+
+</div>
+
+<div algorithm>
+The <dfn method for="LP2PConnection">close()</dfn> method steps are:
+
+1. If [=this=].{{LP2PConnection/[[Closed]]}} is true, return.
+1. Set [=this=].{{LP2PConnection/[[Closed]]}} to true.
+1. Close [=this=].{{LP2PConnection/[[Session]]}}. This closes all of its data channels, as described in [=close a data channel=].
+1. [=Queue a global task=] on the [=networking task source=] given [=this=]'s [=relevant global object=] to [=fire an event=] named {{LP2PConnection/close}} at [=this=].
+
+</div>
+
+<div algorithm="LP2PConnection session closed">
+When the user agent learns that the {{LP2PConnection/[[Session]]}} of an {{LP2PConnection}} |connection| has been closed, whether by the peer or because the underlying transport failed, it must [=queue a global task=] on the [=networking task source=] given |connection|'s [=relevant global object=] to run these steps:
+
+1. If |connection|.{{LP2PConnection/[[Closed]]}} is true, abort these steps.
+1. Set |connection|.{{LP2PConnection/[[Closed]]}} to true.
+1. [=Fire an event=] named {{LP2PConnection/close}} at |connection|.
+
+</div>
+
+The {{LP2PConnection/close}} event is fired at most once for a given {{LP2PConnection}}.
+
+Events {#lp2p-connection-events}
+--------------------------------
+
+The following event is [=fire an event|fired=] at the {{LP2PConnection}} object:
+
+<table class="data">
+  <thead>
+    <tr>
+      <th>Event name</th>
+      <th>Interface</th>
+      <th>Fired when&mldr;</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><dfn event for="LP2PConnection"><code>close</code></dfn></td>
+      <td>{{Event}}</td>
+      <td>The connection is closed, by {{LP2PConnection/close()}} or by the peer.</td>
+    </tr>
+  </tbody>
+</table>
+
+Event handlers {#lp2p-connection-event-handlers}
+------------------------------------------------
+
+The following are the <a>event handlers</a> (and their corresponding <a>event handler event types</a>) that must be supported, as <a>event handler IDL attributes</a>, by all objects implementing the {{LP2PConnection}} interface:
+
+<table class="data">
+  <thead>
+    <tr>
+      <th><a>event handler</a></th>
+      <th><a>event handler event type</a></th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><dfn attribute for="LP2PConnection"><code>onclose</code></dfn></td>
+      <td>{{LP2PConnection/close}}</td>
+    </tr>
+  </tbody>
+</table>
 
 LP2PQuicTransport Interface Extensions {#lp2p-connection-quic-transport-extensions}
 -------------------------------------------------------------------
